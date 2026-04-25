@@ -16,7 +16,26 @@ const indexToChar={
 
 const charToIndex={};
 for (let k in indexToChar) charToIndex[indexToChar[k]] = Number(k);
+// ================= ALM OPS TABLE =================
+const ALM_OPS = {
+  11: normalizeArabic,
+  12: cleanText,
+  13: crc32,
+  14: wordToCode,
+  15: codeToWord,
+  16: getByteFromBigIntLE,
+  17: drawByteToBuffer,
+  18: drawCountToBuffer,
+  19: drawCrc32ToBuffer,
+  20: readByteFromBuffer,
+  21: readCrc32FromBuffer
+};
 
+function ALM_RUN(id, ...args){
+  const fn = ALM_OPS[id];
+  if(!fn) throw new Error("ALM: unknown op " + id);
+  return fn(...args);
+}
 // ================= TEXT CLEAN =================
 function normalizeArabic(s){
   s = (s || "");
@@ -213,11 +232,11 @@ btnEncode.onclick = async () => {
     btnEncode.disabled = true;
 
     let text = await extractText(file);
-    text = cleanText(text);
-
+    text = ALM_RUN(12, text);
     if(!text) throw new Error("لم يتم استخراج نص صالح بعد التنقية.");
 
-    const crc = crc32(text);
+    
+const crc = ALM_RUN(13, text);
     const key = BigInt(document.getElementById("userKey").value || 0);
 
     const words = text.split(" ");
@@ -248,20 +267,21 @@ btnEncode.onclick = async () => {
     }
 
     const countBig = BigInt(blocks.length);
-    drawCountToBuffer(buf, countBig);
-
-    drawCrc32ToBuffer(buf, crc, HEADER_CRC_OFFSET);
-
-    for(let p=HEADER_RESERVED_OFFSET; p<HEADER; p++){
-      drawByteToBuffer(buf, p, 0);
-    }
-
+    ALM_RUN(18, buf, countBig);
+    
+    ALM_RUN(19, buf, crc, HEADER_CRC_OFFSET);
+    
+    
+for(let p=HEADER_RESERVED_OFFSET; p<HEADER; p++){
+  ALM_RUN(17, buf, p, 0);
+}
     for (let bi=0; bi<blocks.length; bi++){
       const b = blocks[bi];
-      const C = wordToCode(b) ^ key;
-
+      
+const C = ALM_RUN(14, b) ^ key;
       for(let j=0; j<8; j++){
-        const byteVal = getByteFromBigIntLE(C, j);
+        
+const byteVal = ALM_RUN(16, C, j);
         const p = HEADER + bi*8 + j;
         drawByteToBuffer(buf, p, byteVal);
       }
@@ -298,7 +318,8 @@ function readByteFromBuffer(data, p){
 function readCrc32FromBuffer(data, offset){
   let crc = 0;
   for(let i=0;i<4;i++){
-    const v = readByteFromBuffer(data, offset + i) & 0xFF;
+  
+const v = ALM_RUN(20, data, i);  & 0xFF;
     crc |= (v << (8*i)) >>> 0;
   }
   return crc >>> 0;
@@ -351,24 +372,27 @@ btnDecode.onclick = async () => {
       throw new Error("لم يتم العثور على عدد صحيح للبلوكات في الهيدر.");
     }
 
-    const crcRead = readCrc32FromBuffer(data, HEADER_CRC_OFFSET);
+    
+const crcRead = ALM_RUN(21, data, HEADER_CRC_OFFSET);
 
     const blocks=[];
     for(let bi=0; bi<blocksCount; bi++){
       let C=0n;
       for(let j=0; j<8; j++){
         const p = HEADER + bi*8 + j;
-        const v = readByteFromBuffer(data, p);
+        
+const v = ALM_RUN(20, data, p);
         C |= (BigInt(v) << BigInt(8*j));
       }
-      const w = codeToWord(C ^ key);
+      
+const w = ALM_RUN(15, C ^ key);
       if(w) blocks.push(w);
     }
 
     const text = blocks.join(" ");
     lastDecodedText = text;
 
-    const crcCalc = crc32(text);
+const crcCalc = ALM_RUN(13, text);
     const ok = (crcCalc >>> 0) === (crcRead >>> 0);
 
     outputText.textContent = text || "—";
