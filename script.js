@@ -1,12 +1,11 @@
 /****************************************************
 
-* script.js — ALM + Image Encoder (Stable V1+)
+* script.js — ALM VM + Image Encoder (Stable V2)
   ****************************************************/
 
 // ================= SETTINGS =================
 const B=32, LMAX=12, SIZE=1024, HEADER=24;
 const HEADER_CRC_OFFSET = 8;
-const HEADER_RESERVED_OFFSET = 12;
 
 const MAGIC = [65,76,77,54]; // ALM6
 
@@ -20,6 +19,16 @@ const indexToChar={
 
 const charToIndex={};
 for (let k in indexToChar) charToIndex[indexToChar[k]] = Number(k);
+
+// ================= INIT VM =================
+const vm = new ALM_VM();
+for(const k in ALM_PROGRAMS){
+vm.loadProgram(k, ALM_PROGRAMS[k]);
+}
+
+function ALM_EXEC(name, input){
+return vm.run(name, input);
+}
 
 // ================= TEXT CLEAN =================
 function normalizeArabic(s){
@@ -91,38 +100,7 @@ return text;
 throw new Error("نوع غير مدعوم");
 }
 
-// ================= ENCODE HELPERS =================
-function wordToCode(w){
-const c = new Array(LMAX).fill(0);
-let p=0;
-for(let i=w.length-1;i>=0;i--){
-const idx = charToIndex[w[i]];
-if(idx===undefined) continue;
-c[p++]=idx;
-if(p>=LMAX) break;
-}
-let C=0n;
-for(let i=0;i<LMAX;i++){
-C += BigInt(c[i])*(BigInt(B)**BigInt(i));
-}
-return C;
-}
-
-function codeToWord(C){
-let out="";
-for(let i=0;i<LMAX;i++){
-const d = Number(C % BigInt(B));
-C/=BigInt(B);
-if(d) out = indexToChar[d] + out;
-}
-return out;
-}
-
-function getByteFromBigIntLE(Cbig, byteIndex){
-return Number((Cbig >> BigInt(8*byteIndex)) & 0xFFn);
-}
-
-// ================= DRAW =================
+// ================= BYTE OPS =================
 function drawByte(buf,p,val){
 const gray = 255-(val&0xFF);
 const i=p*4;
@@ -134,6 +112,10 @@ buf[i+3]=255;
 
 function readByte(data,p){
 return 255 - data[p*4];
+}
+
+function getByteLE(Cbig, i){
+return Number((Cbig >> BigInt(8*i)) & 0xFFn);
 }
 
 // ================= UI =================
@@ -179,11 +161,12 @@ const ctx=canvas.getContext("2d");
 const img=ctx.createImageData(SIZE,SIZE);
 const buf=img.data;
 
+// fill white
 for(let i=0;i<buf.length;i+=4){
   buf[i]=255;buf[i+1]=255;buf[i+2]=255;buf[i+3]=255;
 }
 
-// HEADER
+// COUNT
 let count=BigInt(blocks.length);
 for(let i=0;i<8;i++){
   drawByte(buf,i,Number((count>>(8n*BigInt(i)))&0xFFn));
@@ -202,16 +185,17 @@ for(let i=0;i<4;i++){
 // DATA
 for(let bi=0;bi<blocks.length;bi++){
   const dynamicKey = key ^ BigInt(bi);
-  const C = wordToCode(blocks[bi]) ^ dynamicKey;
+  const C = ALM_EXEC("WORD_TO_CODE", blocks[bi]) ^ dynamicKey;
 
   for(let j=0;j<8;j++){
     const p = HEADER + bi*8 + j;
-    drawByte(buf,p,getByteFromBigIntLE(C,j));
+    drawByte(buf,p,getByteLE(C,j));
   }
 }
 
 ctx.putImageData(img,0,0);
-statusEncode.textContent="تم بنجاح ✅";
+
+statusEncode.textContent="تم التشفير ✅";
 btnEncode.disabled=false;
 
 }catch(e){
@@ -239,15 +223,16 @@ await new Promise(res=>{
 const canvas=document.getElementById("canvas");
 canvas.width=img.width;
 canvas.height=img.height;
+
 const ctx=canvas.getContext("2d");
 ctx.drawImage(img,0,0);
 
 const data = ctx.getImageData(0,0,canvas.width,canvas.height).data;
 
-// CHECK MAGIC
+// MAGIC CHECK
 for(let i=0;i<4;i++){
   if(readByte(data,8+i)!==MAGIC[i]){
-    throw new Error("الصورة ليست ALM");
+    throw new Error("الصورة ليست من نظام ALM");
   }
 }
 
@@ -264,13 +249,17 @@ for(let bi=0;bi<Number(count);bi++){
     const p=HEADER+bi*8+j;
     C |= BigInt(readByte(data,p))<<(8n*BigInt(j));
   }
+
   const dynamicKey = key ^ BigInt(bi);
-  blocks.push(codeToWord(C ^ dynamicKey));
+  const word = ALM_EXEC("CODE_TO_WORD", C ^ dynamicKey);
+
+  if(word) blocks.push(word);
 }
 
 const text = blocks.join(" ");
-lastDecodedText=text;
+lastDecodedText = text;
 
+// CRC CHECK
 const crcStored = (
   readByte(data,8) |
   (readByte(data,9)<<8) |
@@ -281,8 +270,9 @@ const crcStored = (
 const crcNow = crc32(text);
 
 outputText.textContent=text;
+
 statusDecode.textContent = (crcNow===crcStored)
-  ? "تم بنجاح ✅"
+  ? "تم فك التشفير ✅"
   : "تحذير: البيانات تغيرت ⚠️";
 
 }catch(e){
