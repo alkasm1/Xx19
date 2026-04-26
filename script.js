@@ -46,7 +46,15 @@ const ALM_PROGRAMS = {
 
 let ALM_ACC = 0n;
 let ALM_POS = 0;
-
+ALM_PROGRAMS[15] = [
+  ["RESET_STR"],
+  ["FOR_I", LMAX, [
+    ["MOD_BASE"],
+    ["DIV_BASE"],
+    ["APPEND_CHAR"]
+  ]],
+  ["RETURN_STR"]
+];
 // ================= ALM INTERPRETER =================
 function ALM_RUN(id, ...args){
 
