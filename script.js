@@ -78,14 +78,14 @@ function ALM_RUN(id, ...args){
         ALM_ACC = 0n;
         ALM_POS = 0;
       }
-
-      if (op === "FOR_EACH_CHAR") {
-        const body = step[1];
-        for (let i = input.length - 1; i >= 0; i--) {
-          const ch = input[i];
-          for (const inner of body) {
-            const innerOp = inner[0];
-
+            
+if (op === "FOR_EACH_CHAR") {
+  const body = step[1];
+  for (let i = input.length - 1; i >= 0 && ALM_POS < LMAX; i--) {
+    const ch = input[i];
+    ...
+  }
+}
             if (innerOp === "PUSH_CHAR_INDEX") {
               const idx = charToIndex[ch] || 0;
               ALM_ACC += BigInt(idx) * (BigInt(B) ** BigInt(ALM_POS));
