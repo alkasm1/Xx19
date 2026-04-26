@@ -33,11 +33,41 @@ const ALM_OPS = {
 };
 
 function ALM_RUN(id, ...args){
+  // لو يوجد برنامج ALM لهذا الـ ID
+  if(ALM_PROGRAMS[id]){
+    let value = args[0]; // cleanText تستقبل نص واحد
+
+    for(const step of ALM_PROGRAMS[id]){
+      const type = step[0];
+
+      if(type === "OP"){
+        const opId = step[1];
+
+        // 11 = normalizeArabic
+        if(opId === 11){
+          value = normalizeArabic(value);
+        }
+
+        // 12.1 = إزالة غير العربية
+        if(opId === 12.1){
+          value = value.replace(/[^ا-يء ]+/g, " ");
+        }
+
+        // 12.2 = ضغط المسافات
+        if(opId === 12.2){
+          value = value.replace(/\s+/g, " ").trim();
+        }
+      }
+    }
+
+    return value;
+  }
+
+  // الوضع القديم (fallback)
   const fn = ALM_OPS[id];
   if(!fn) throw new Error("ALM: unknown op " + id);
   return fn(...args);
-}
-async function ALM_LOAD(){
+}async function ALM_LOAD(){
   const res = await fetch("alm_core.alm");
   const txt = await res.text();
   const lines = txt.split("\n");
