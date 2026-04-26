@@ -27,18 +27,16 @@ for (let k in indexToChar) charToIndex[indexToChar[k]] = Number(k);
 /****************************************************
  * 🔥 NORMALIZE (الإصدار الصحيح)
  ****************************************************/
+
 function normalizeArabic(text){
   if(!text) return "";
 
   return text
     .replace(/[\u064B-\u0652]/g, "")   // إزالة التشكيل
     .replace(/[إأآ]/g, "ا")           // توحيد الألف
-    .replace(/ى/g, "ي")              // ألف مقصورة
-    .replace(/ؤ/g, "و")              // همزة على واو
-    .replace(/ئ/g, "ي")              // همزة على نبرة
-    .replace(/ة/g, "ه")              // تاء مربوطة
+    .replace(/ى/g, "ي")               // ألف مقصورة
+    .replace(/ة/g, "ه");              // تاء مربوطة
 }
-
 function cleanText(text){
   text = normalizeArabic(text);
 
