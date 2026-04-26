@@ -16,7 +16,6 @@ const indexToChar={
 
 const charToIndex={};
 for (let k in indexToChar) charToIndex[indexToChar[k]] = Number(k);
-
 // ================= ALM OPS TABLE =================
 const ALM_OPS = {
   11: normalizeArabic,
@@ -41,30 +40,36 @@ const ALM_PROGRAMS = {
       ["NEXT_POSITION"]
     ]],
     ["RETURN_ACC"]
+  ],
+  15: [
+    ["RESET_STR"],
+    ["FOR_I", LMAX, [
+      ["MOD_BASE"],
+      ["DIV_BASE"],
+      ["APPEND_CHAR"]
+    ]],
+    ["RETURN_STR"]
   ]
 };
 
 let ALM_ACC = 0n;
 let ALM_POS = 0;
-ALM_PROGRAMS[15] = [
-  ["RESET_STR"],
-  ["FOR_I", LMAX, [
-    ["MOD_BASE"],
-    ["DIV_BASE"],
-    ["APPEND_CHAR"]
-  ]],
-  ["RETURN_STR"]
-];
+let ALM_STR = "";
+let ALM_C = 0n;
+let ALM_TMP = 0;
+
 // ================= ALM INTERPRETER =================
 function ALM_RUN(id, ...args){
 
-  // إذا كان هناك برنامج ALM لهذا الـ ID
   if (ALM_PROGRAMS[id]) {
     const program = ALM_PROGRAMS[id];
     let input = args[0];
 
     ALM_ACC = 0n;
     ALM_POS = 0;
+    ALM_STR = "";
+    ALM_C = 0n;
+    ALM_TMP = 0;
 
     for (const step of program) {
       const op = step[0];
@@ -93,18 +98,50 @@ function ALM_RUN(id, ...args){
         }
       }
 
+      if (op === "RESET_STR") {
+        ALM_STR = "";
+        ALM_C = BigInt(input);
+      }
+
+      if (op === "FOR_I") {
+        const count = step[1];
+        const body = step[2];
+
+        for (let k = 0; k < count; k++) {
+          for (const inner of body) {
+            const innerOp = inner[0];
+
+            if (innerOp === "MOD_BASE") {
+              ALM_TMP = Number(ALM_C % BigInt(B));
+            }
+
+            if (innerOp === "DIV_BASE") {
+              ALM_C = ALM_C / BigInt(B);
+            }
+
+            if (innerOp === "APPEND_CHAR") {
+              if (ALM_TMP > 0) {
+                ALM_STR = indexToChar[ALM_TMP] + ALM_STR;
+              }
+            }
+          }
+        }
+      }
+
       if (op === "RETURN_ACC") {
         return ALM_ACC;
+      }
+
+      if (op === "RETURN_STR") {
+        return ALM_STR;
       }
     }
   }
 
-  // الوضع القديم (fallback)
   const fn = ALM_OPS[id];
   if (!fn) throw new Error("ALM: unknown op " + id);
   return fn(...args);
 }
-
 // ================= LOAD ALM FILE =================
 async function ALM_LOAD(){
   const res = await fetch("alm_core.alm");
