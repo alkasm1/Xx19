@@ -1,15 +1,42 @@
 # ============================
-# ALM CORE COMMANDS (v1)
+# ALM CORE COMMANDS (v1.1)
 # ============================
 
+# ===== TEXT =====
 CMD 11 NORMALIZE_ARABIC
 CMD 12 CLEAN_TEXT
+
+# ===== HASH =====
 CMD 13 CRC32
+
+# ===== ENCODE / DECODE =====
 CMD 14 WORD_TO_CODE
 CMD 15 CODE_TO_WORD
+
+# ===== BYTE OPS =====
 CMD 16 GET_BYTE_LE
+
+# ===== DRAW =====
 CMD 17 DRAW_BYTE
 CMD 18 DRAW_COUNT
 CMD 19 DRAW_CRC
+
+# ===== READ =====
 CMD 20 READ_BYTE
 CMD 21 READ_CRC
+
+# ============================
+# META (for future VM)
+# ============================
+
+# TYPE: CORE
+# VERSION: 1.1
+# AUTHOR: ALM SYSTEM
+
+# NOTES:
+# - Each command ID maps to JS function in ALM_OPS
+# - Programs executed via ALM_RUN
+# - This file is used for:
+#   1) Debugging
+#   2) Future compiler
+#   3) Visualization
