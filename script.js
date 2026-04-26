@@ -1,33 +1,34 @@
 /****************************************************
- * ALM GeoFreq v1 STABLE
- * Clean Architecture Version
+ * ALM HYBRID ENGINE v1
+ * Byte + Position Encoding (Stable Upgrade)
  ****************************************************/
 
-/**************** SETTINGS ****************/
-const B = 32;
-const LMAX = 12;
-const SIZE = 1024;
-const HEADER = 24;
+// ================= SETTINGS =================
+const B=32, LMAX=12, SIZE=1024, HEADER=32;
 
-const HEADER_VERSION_OFFSET = 12;
-const HEADER_KEYCHECK_OFFSET = 13;
+// HEADER STRUCTURE
+// [0..7]   = block count
+// [8..11]  = CRC32
+// [12]     = mode (1=byte , 2=hybrid)
+// [13..31] = reserved
+
 const HEADER_CRC_OFFSET = 8;
+const HEADER_MODE_OFFSET = 12;
 
-/**************** CHAR TABLE ****************/
-const indexToChar = {
+// ================= CHAR TABLE =================
+const indexToChar={
   1:"ا",2:"ب",3:"ت",4:"ث",5:"ج",6:"ح",7:"خ",8:"د",9:"ذ",
   10:"ر",11:"ز",12:"س",13:"ش",14:"ص",15:"ض",16:"ط",
   17:"ظ",18:"ع",19:"غ",20:"ف",21:"ق",22:"ك",23:"ل",
   24:"م",25:"ن",26:"ه",27:"و",28:"ي",29:"ء"
 };
 
-const charToIndex = {};
+const charToIndex={};
 for (let k in indexToChar) charToIndex[indexToChar[k]] = Number(k);
 
-/**************** CORE ****************/
-
+// ================= TEXT =================
 function normalizeArabic(s){
-  return (s || "")
+  return (s||"")
     .replace(/[إأآ]/g,"ا")
     .replace(/ى/g,"ي")
     .replace(/ة/g,"ه")
@@ -36,194 +37,206 @@ function normalizeArabic(s){
 
 function cleanText(t){
   t = normalizeArabic(t);
-  let out = "";
-  for (const ch of t) {
-    if (ch === " " || ch === "\n") out += " ";
-    else if (charToIndex[ch]) out += ch;
+  let out="";
+  for(const ch of t){
+    if(ch===" "||ch==="\n") out+=" ";
+    else if(charToIndex[ch]) out+=ch;
   }
-  return out.replace(/\s+/g, " ").trim();
+  return out.replace(/\s+/g," ").trim();
 }
 
-/**************** CRC ****************/
+// ================= CRC32 =================
 function crc32(str){
   const table = crc32.table || (crc32.table = (() => {
-    const t = new Array(256);
-    for (let i=0;i<256;i++){
+    let t=[];
+    for(let i=0;i<256;i++){
       let c=i;
       for(let k=0;k<8;k++){
-        c = (c&1)?(0xEDB88320^(c>>>1)):(c>>>1);
+        c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);
       }
       t[i]=c>>>0;
     }
     return t;
   })());
 
-  const bytes = new TextEncoder().encode(str);
-  let crc = 0xFFFFFFFF;
-
-  for (let b of bytes){
-    crc = (crc>>>8)^table[(crc^b)&0xFF];
+  const bytes=new TextEncoder().encode(str);
+  let crc=0xFFFFFFFF;
+  for(let b of bytes){
+    crc=(crc>>>8)^table[(crc^b)&0xFF];
   }
-
   return (crc^0xFFFFFFFF)>>>0;
 }
 
-/**************** WORD ENCODE ****************/
+// ================= WORD CODE =================
 function wordToCode(w){
-  let C=0n;
-  let p=0;
-
-  for(let i=w.length-1;i>=0 && p<LMAX;i--){
-    const idx = charToIndex[w[i]] || 0;
-    C += BigInt(idx) * (BigInt(B) ** BigInt(p));
+  let C=0n, p=0;
+  for(let i=w.length-1;i>=0;i--){
+    let idx=charToIndex[w[i]];
+    if(!idx) continue;
+    C += BigInt(idx)*(BigInt(B)**BigInt(p));
     p++;
+    if(p>=LMAX) break;
   }
-
   return C;
 }
 
 function codeToWord(C){
   let out="";
   for(let i=0;i<LMAX;i++){
-    const d = Number(C % BigInt(B));
-    C /= BigInt(B);
-    if(d) out = indexToChar[d] + out;
+    let d=Number(C%BigInt(B));
+    C/=BigInt(B);
+    if(d) out=indexToChar[d]+out;
   }
   return out;
 }
 
-/**************** IMAGE LAYER ****************/
-function drawByte(buf, p, v){
-  const gray = 255 - v;
-  const i = p*4;
-  buf[i]=gray; buf[i+1]=gray; buf[i+2]=gray; buf[i+3]=255;
+// ================= BYTE =================
+function getByte(C,i){
+  return Number((C>>BigInt(8*i))&0xFFn);
 }
 
-function readByte(data, p){
-  return 255 - data[p*4];
+// ================= DRAW =================
+function drawByte(buf,p,val){
+  let g=255-(val&255);
+  let i=p*4;
+  buf[i]=buf[i+1]=buf[i+2]=g;
+  buf[i+3]=255;
 }
 
-/**************** UI ****************/
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
+function readByte(data,p){
+  return 255-data[p*4];
+}
 
-const btnEncode = document.getElementById("btnEncode");
-const btnDecode = document.getElementById("btnDecode");
+// ================= POSITION ENCODING =================
+function encodePosition(n){
+  const x = Number(n % BigInt(SIZE));
+  const y = Number(n / BigInt(SIZE));
+  return {x,y};
+}
 
-const statusEncode = document.getElementById("statusEncode");
-const statusDecode = document.getElementById("statusDecode");
-const outputText = document.getElementById("outputText");
+function decodePosition(x,y){
+  return BigInt(y)*BigInt(SIZE)+BigInt(x);
+}
 
-/**************** ENCODE ****************/
-btnEncode.onclick = async () => {
+// ================= GLOBAL =================
+let lastDecodedText="";
+
+// ================= ENCODE =================
+btnEncode.onclick = async ()=>{
   try{
     const file = document.getElementById("docInput").files[0];
     if(!file) return alert("اختر ملف");
 
-    let text = await file.text();
+    let text = await extractText(file);
     text = cleanText(text);
 
+    const key = BigInt(userKey.value||0);
     const crc = crc32(text);
-    const key = BigInt(document.getElementById("userKey").value || 0);
-    const keyCheck = Number(key % 256n);
 
-    const words = text.split(" ");
-    const blocks = [];
-
+    const words=text.split(" ");
+    const blocks=[];
     for(const w of words){
       for(let i=0;i<w.length;i+=LMAX){
         blocks.push(w.slice(i,i+LMAX));
       }
     }
 
-    canvas.width = SIZE;
-    canvas.height = SIZE;
+    const canvas=document.getElementById("canvas");
+    canvas.width=SIZE;
+    canvas.height=SIZE;
+    const ctx=canvas.getContext("2d");
 
-    const img = ctx.createImageData(SIZE,SIZE);
-    const buf = img.data;
+    const img=ctx.createImageData(SIZE,SIZE);
+    const buf=img.data;
 
-    for(let i=0;i<buf.length;i+=4){
-      buf[i]=255;buf[i+1]=255;buf[i+2]=255;buf[i+3]=255;
-    }
+    buf.fill(255);
 
-    // header
-    let count = BigInt(blocks.length);
-    for(let i=0;i<8;i++){
-      drawByte(buf,i,Number((count>>(8n*i))&0xFFn));
-    }
+    // HEADER
+    let count=BigInt(blocks.length);
+    for(let i=0;i<8;i++) drawByte(buf,i,Number((count>>BigInt(8*i))&255n));
+    for(let i=0;i<4;i++) drawByte(buf,HEADER_CRC_OFFSET+i,(crc>>(8*i))&255);
 
-    for(let i=0;i<4;i++){
-      drawByte(buf,8+i,(crc>>(8*i))&0xFF);
-    }
+    drawByte(buf,HEADER_MODE_OFFSET,2); // HYBRID MODE
 
-    drawByte(buf,HEADER_VERSION_OFFSET,1);
-    drawByte(buf,HEADER_KEYCHECK_OFFSET,keyCheck);
+    let ptr=HEADER;
 
-    // data
-    for(let bi=0;bi<blocks.length;bi++){
-      const C = wordToCode(blocks[bi]) ^ key;
+    for(let b of blocks){
+      let C=wordToCode(b)^key;
 
+      // BYTE STORE
       for(let j=0;j<8;j++){
-        const byte = Number((C>>(8n*j))&0xFFn);
-        drawByte(buf,HEADER+bi*8+j,byte);
+        drawByte(buf,ptr++,getByte(C,j));
       }
+
+      // POSITION STORE
+      let pos=encodePosition(C);
+      let pixelIndex = pos.y*SIZE + pos.x;
+      let idx = pixelIndex*4;
+
+      buf[idx]=0; buf[idx+1]=255; buf[idx+2]=0; buf[idx+3]=255;
     }
 
     ctx.putImageData(img,0,0);
 
-    statusEncode.textContent = "تم التشفير ✅";
+    statusEncode.textContent="تم التشفير HYBRID ✅";
   }catch(e){
     alert(e.message);
   }
 };
 
-/**************** DECODE ****************/
-btnDecode.onclick = async () => {
+// ================= DECODE =================
+btnDecode.onclick = async ()=>{
   try{
-    const file = document.getElementById("imageInput").files[0];
+    const file=imageInput.files[0];
     if(!file) return alert("اختر صورة");
 
-    const img = new Image();
-    const url = URL.createObjectURL(file);
+    const key = BigInt(userKey.value||0);
 
-    await new Promise(res=>{
-      img.onload=res;
-      img.src=url;
-    });
+    const img=new Image();
+    img.src=URL.createObjectURL(file);
+    await img.decode();
 
-    canvas.width = img.width;
-    canvas.height = img.height;
+    const canvas=document.getElementById("canvas");
+    canvas.width=img.width;
+    canvas.height=img.height;
+
+    const ctx=canvas.getContext("2d");
     ctx.drawImage(img,0,0);
 
-    const data = ctx.getImageData(0,0,SIZE,SIZE).data;
+    const data=ctx.getImageData(0,0,SIZE,SIZE).data;
 
+    // READ COUNT
     let count=0n;
     for(let i=0;i<8;i++){
-      count |= BigInt(readByte(data,i))<<(8n*i);
+      count|=BigInt(readByte(data,i))<<(BigInt(8*i));
     }
 
-    const key = BigInt(document.getElementById("userKey").value || 0);
-    const keyCheck = readByte(data,HEADER_KEYCHECK_OFFSET);
+    let mode = readByte(data,HEADER_MODE_OFFSET);
 
-    if(Number(key%256n)!==keyCheck){
-      alert("المفتاح غير صحيح");
-      return;
-    }
+    let blocks=[];
+    let ptr=HEADER;
 
-    const blocks=[];
-    for(let bi=0;bi<Number(count);bi++){
-      let C=0n;
-      for(let j=0;j<8;j++){
-        const v = readByte(data,HEADER+bi*8+j);
-        C |= BigInt(v)<<(8n*j);
+    if(mode===2){
+      // HYBRID
+      for(let i=0;i<Number(count);i++){
+        let C=0n;
+
+        for(let j=0;j<8;j++){
+          let v=readByte(data,ptr++);
+          C|=BigInt(v)<<(BigInt(8*j));
+        }
+
+        let w=codeToWord(C^key);
+        if(w) blocks.push(w);
       }
-      blocks.push(codeToWord(C ^ key));
     }
 
-    const text = blocks.join(" ");
-    outputText.textContent = text;
+    let text=blocks.join(" ");
+    lastDecodedText=text;
+    outputText.textContent=text;
 
-    statusDecode.textContent = "تم فك التشفير ✅";
+    statusDecode.textContent="تم فك HYBRID ✅";
+
   }catch(e){
     alert(e.message);
   }
