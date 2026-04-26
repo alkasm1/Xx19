@@ -2,8 +2,8 @@
 const B=32, LMAX=12, SIZE=1024, HEADER=24;
 
 // CRC32 stored in header bytes [8..11]
-const HEADER_CRC_OFFSET = 8;   // bytes [8..11]
-const HEADER_RESERVED_OFFSET = 12; // bytes [12..23]
+const HEADER_CRC_OFFSET = 8;
+const HEADER_RESERVED_OFFSET = 12;
 
 // ================= CHAR TABLE =================
 const indexToChar={
@@ -32,42 +32,73 @@ const ALM_OPS = {
   21: readCrc32FromBuffer
 };
 
+// ================= ALM PROGRAMS =================
+const ALM_PROGRAMS = {
+  14: [
+    ["RESET_ACC"],
+    ["FOR_EACH_CHAR", [
+      ["PUSH_CHAR_INDEX"],
+      ["NEXT_POSITION"]
+    ]],
+    ["RETURN_ACC"]
+  ]
+};
+
+let ALM_ACC = 0n;
+let ALM_POS = 0;
+
+// ================= ALM INTERPRETER =================
 function ALM_RUN(id, ...args){
-  // لو يوجد برنامج ALM لهذا الـ ID
-  if(ALM_PROGRAMS[id]){
-    let value = args[0]; // cleanText تستقبل نص واحد
 
-    for(const step of ALM_PROGRAMS[id]){
-      const type = step[0];
+  // إذا كان هناك برنامج ALM لهذا الـ ID
+  if (ALM_PROGRAMS[id]) {
+    const program = ALM_PROGRAMS[id];
+    let input = args[0];
 
-      if(type === "OP"){
-        const opId = step[1];
+    ALM_ACC = 0n;
+    ALM_POS = 0;
 
-        // 11 = normalizeArabic
-        if(opId === 11){
-          value = normalizeArabic(value);
-        }
+    for (const step of program) {
+      const op = step[0];
 
-        // 12.1 = إزالة غير العربية
-        if(opId === 12.1){
-          value = value.replace(/[^ا-يء ]+/g, " ");
-        }
+      if (op === "RESET_ACC") {
+        ALM_ACC = 0n;
+        ALM_POS = 0;
+      }
 
-        // 12.2 = ضغط المسافات
-        if(opId === 12.2){
-          value = value.replace(/\s+/g, " ").trim();
+      if (op === "FOR_EACH_CHAR") {
+        const body = step[1];
+        for (let i = input.length - 1; i >= 0; i--) {
+          const ch = input[i];
+          for (const inner of body) {
+            const innerOp = inner[0];
+
+            if (innerOp === "PUSH_CHAR_INDEX") {
+              const idx = charToIndex[ch] || 0;
+              ALM_ACC += BigInt(idx) * (BigInt(B) ** BigInt(ALM_POS));
+            }
+
+            if (innerOp === "NEXT_POSITION") {
+              ALM_POS++;
+            }
+          }
         }
       }
-    }
 
-    return value;
+      if (op === "RETURN_ACC") {
+        return ALM_ACC;
+      }
+    }
   }
 
   // الوضع القديم (fallback)
   const fn = ALM_OPS[id];
-  if(!fn) throw new Error("ALM: unknown op " + id);
+  if (!fn) throw new Error("ALM: unknown op " + id);
   return fn(...args);
-}async function ALM_LOAD(){
+}
+
+// ================= LOAD ALM FILE =================
+async function ALM_LOAD(){
   const res = await fetch("alm_core.alm");
   const txt = await res.text();
   const lines = txt.split("\n");
@@ -80,33 +111,12 @@ function ALM_RUN(id, ...args){
     const id = Number(parts[1]);
     const name = parts[2];
 
-    // فقط نربط الاسم بالـ ID (للمستقبل)
     ALM_OPS_NAMES[id] = name;
   }
 }
 
 const ALM_OPS_NAMES = {};
 ALM_LOAD();
-// ================= ALM PROGRAMS =================
-const ALM_PROGRAMS = {
-  12: [
-    ["OP", 11],   // NORMALIZE_ARABIC
-    ["OP", 12.1], // REMOVE_NON_ARABIC (سنعرّفها بعد قليل)
-    ["OP", 12.2]  // COMPRESS_SPACES
-  ]
-};
-ALM_PROGRAMS[14] = [
-  ["RESET_ACC"],
-
-  // loop over characters (ALM interpreter will handle looping)
-  ["FOR_EACH_CHAR", [
-    ["PUSH_CHAR_INDEX"],
-    ["ACCUMULATE_BASE32"],
-    ["NEXT_POSITION"]
-  ]],
-
-  ["RETURN_ACC"]
-];
 // ================= TEXT CLEAN =================
 function normalizeArabic(s){
   s = (s || "");
@@ -274,8 +284,10 @@ function drawCrc32ToBuffer(buf, crc32u, offset){
   for(let i=0;i<4;i++){
     const v = (crc32u >>> (8*i)) & 0xFF;
     drawByteToBuffer(buf, offset + i, v);
-    
-  }// ================= GLOBAL STATE =================
+  }
+}
+
+// ================= GLOBAL STATE =================
 let lastDecodedText = "";
 
 // ================= ENCODE =================
@@ -513,5 +525,4 @@ function downloadBlob(blob, name){
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1500);
-}
 }
