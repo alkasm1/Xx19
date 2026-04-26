@@ -57,6 +57,15 @@ async function ALM_LOAD(){
 
 const ALM_OPS_NAMES = {};
 ALM_LOAD();
+// ================= ALM PROGRAMS =================
+const ALM_PROGRAMS = {
+  12: [
+    ["OP", 11],   // NORMALIZE_ARABIC
+    ["OP", 12.1], // REMOVE_NON_ARABIC (سنعرّفها بعد قليل)
+    ["OP", 12.2]  // COMPRESS_SPACES
+  ]
+};
+
 // ================= TEXT CLEAN =================
 function normalizeArabic(s){
   s = (s || "");
