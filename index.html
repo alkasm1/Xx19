@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ALM GeoFreq v6 — File → Image → File</title>
 
-  <!-- مكتبات محلية فقط (Offline 100%) -->
+  <!-- مكتبات محلية -->
   <script src="jszip.min.js"></script>
   <script src="pdf.min.js"></script>
   <script src="pdf.worker.min.js"></script>
@@ -25,8 +25,9 @@
       --muted:#6b7280;
       --border:#e5e7eb;
     }
-    body { font-family: "Cairo", system-ui, -apple-system, Segoe UI, Roboto, Arial; margin:0; background:var(--bg); color:var(--text); }
+    body { font-family: "Cairo", system-ui; margin:0; background:var(--bg); color:var(--text); }
     header { background:linear-gradient(90deg,var(--green),#0b8fc1); color:white; padding:18px; text-align:center; font-weight:800; }
+
     .container { padding:20px; max-width:980px; margin:auto; }
 
     .grid{
@@ -44,53 +45,49 @@
       border:1px solid var(--border);
       border-radius:14px;
       padding:16px;
-      box-shadow: 0 2px 10px rgba(0,0,0,.03);
     }
 
     label{ display:block; font-weight:700; margin-top:10px; }
+
     input[type="text"], select{
-      width:100%; padding:12px; margin-top:8px;
-      border:1px solid var(--border); border-radius:10px; outline:none;
-      background:#fff;
+      width:100%; padding:12px;
+      margin-top:8px;
+      border:1px solid var(--border);
+      border-radius:10px;
     }
 
     input[type="file"]{ width:100%; margin-top:10px; }
 
     button{
       width:100%;
-      padding:12px 14px;
+      padding:12px;
       margin-top:10px;
       background:var(--green);
       color:#fff;
       border:none;
       border-radius:10px;
-      font-size:16px;
       font-weight:800;
       cursor:pointer;
-      transition:.15s ease;
     }
     button:hover{ background:var(--green2); }
 
     button.secondary{
       background:#111827;
     }
-    button.secondary:hover{ background:#0b1220; }
 
     .row{
-      display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
     }
-    .row > * { flex:1; min-width: 160px; }
 
     .status{
       margin-top:10px;
-      padding:10px 12px;
-      border-radius:10px;
+      padding:10px;
       border:1px solid var(--border);
+      border-radius:10px;
       background:#fff;
       color:var(--muted);
-      min-height:44px;
-      white-space:pre-wrap;
-      line-height:1.4;
     }
 
     #canvas{
@@ -99,7 +96,6 @@
       image-rendering: pixelated;
       border:1px solid var(--border);
       border-radius:12px;
-      background:#fff;
       margin-top:10px;
     }
 
@@ -109,10 +105,9 @@
       border-radius:10px;
       padding:12px;
       min-height:120px;
-      white-space:pre-wrap;
       background:#fff;
     }
-    small { color:var(--muted); }
+
     .pill{
       display:inline-block;
       padding:6px 10px;
@@ -127,89 +122,88 @@
     footer{
       text-align:center;
       padding:20px;
-      margin-top:30px;
-      color:var(--muted);
-      font-size:14px;
+      color:#666;
     }
   </style>
 </head>
 
 <body>
-  <header>ALM GeoFreq v6 — File → Image → File</header>
+<header>ALM GeoFreq v6 — File → Image → File</header>
 
-  <div class="container">
-    <div class="grid">
-      <div class="card">
-        <div class="row" style="margin-top:0;">
-          <div>
-            <span class="pill">ترميز</span>
-            <label for="userKey">مفتاح المستخدم (عدد صحيح كبير)</label>
-            <input id="userKey" type="text" value="123456789" />
-          </div>
-          <div>
-            <label>وضع الترميز</label>
-<select id="mode">
-  <option value="v1">دقيق (V1)</option>
-  <option value="v2">مقاوم (V2)</option>
-</select>
-            <label>&nbsp;</label>
-            <small>
-              سيتم ترميز محتوى الملف كنص داخلي داخل صورة PNG (SIZE=1024) مع CRC لاكتشاف تلف البيانات.
-            </small>
-          </div>
-        </div>
+<div class="container">
+  <div class="grid">
 
-        <h3 style="margin:10px 0 0;">1) اختيار ملف Word أو PDF → صورة</h3>
+    <!-- ENCODE -->
+    <div class="card">
+      <span class="pill">ترميز</span>
 
-        <input type="file" id="docInput" accept=".docx,.pdf" />
-        <button id="btnEncode">تحويل إلى صورة</button>
+      <label for="userKey">مفتاح المستخدم</label>
+      <input id="userKey" type="text" value="123456789" />
 
-        <canvas id="canvas"></canvas>
-        <button class="secondary" id="btnSaveImage">💾 حفظ الصورة</button>
+      <label>وضع الترميز</label>
+      <select id="mode">
+        <option value="v1">دقيق (V1)</option>
+        <option value="v2">مقاوم (V2)</option>
+      </select>
 
-        <div class="status" id="statusEncode">جاهز.</div>
-      </div>
+      <small>
+        V1: دقة عالية (يتأثر بالضغط)<br>
+        V2: مقاوم جزئيًا للتشويه
+      </small>
 
-      <div class="card">
-        <span class="pill" style="background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;">فكّ</span>
-        <h3 style="margin:10px 0 0;">2) اختيار صورة PNG → ملف Word/PDF</h3>
+      <h3>1) اختيار ملف Word أو PDF → صورة</h3>
 
-        <input type="file" id="imageInput" accept="image/png" />
-        <button id="btnDecode">استعادة النص</button>
+      <input type="file" id="docInput" accept=".docx,.pdf" />
+      <button id="btnEncode">تحويل إلى صورة</button>
 
-        <label style="margin-top:14px;">نوع الإخراج بعد فكّ الترميز</label>
-        <select id="exportMode">
-          <option value="word" selected>Word (DOCX)</option>
-          <option value="pdf">PDF</option>
-        </select>
+      <canvas id="canvas"></canvas>
+      <button class="secondary" id="btnSaveImage">💾 حفظ الصورة</button>
 
-        <button class="secondary" id="btnExport">تنزيل الملف</button>
-
-        <div id="outputText">—</div>
-        <div class="status" id="statusDecode">انتظر عملية فك التشفير.</div>
-      </div>
-
-      <div class="card span2">
-        <small>
-          ملاحظة: فك التشفير هنا ينتج <b>نص</b> ثم يتم إنشاء Word أو PDF كنص.
-        </small>
-      </div> 
+      <div class="status" id="statusEncode">جاهز.</div>
     </div>
+
+    <!-- DECODE -->
+    <div class="card">
+      <span class="pill" style="background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;">فكّ</span>
+
+      <h3>2) اختيار صورة PNG → استرجاع</h3>
+
+      <input type="file" id="imageInput" accept="image/png" />
+      <button id="btnDecode">استعادة النص</button>
+
+      <label>نوع الإخراج</label>
+      <select id="exportMode">
+        <option value="word">Word</option>
+        <option value="pdf">PDF</option>
+      </select>
+
+      <button class="secondary" id="btnExport">تنزيل الملف</button>
+
+      <div id="outputText">—</div>
+      <div class="status" id="statusDecode">انتظر...</div>
+    </div>
+
+    <div class="card span2">
+      <small>
+        النظام يعتمد على ALM + CRC.  
+        لا ترسل الصورة عبر واتساب كصورة — أرسلها كملف.
+      </small>
+    </div>
+
   </div>
+</div>
 
-  <!-- سكربت التطبيق الكامل -->
-  <script src="script.js"></script>
+<script src="script.js"></script>
 
-  <!-- تسجيل Service Worker -->
-  <script>
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js");
-    }
-  </script>
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js");
+}
+</script>
 
-  <footer>
-    تم التطوير بواسطة <b>رأفت عمر</b> — Xx18  
-  </footer>
+<footer>
+تم التطوير بواسطة رأفت عمر — 
+</footer>
 
 </body>
 </html>
