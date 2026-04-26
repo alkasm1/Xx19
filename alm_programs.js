@@ -1,0 +1,22 @@
+const ALM_PROGRAMS = {
+
+WORD_TO_CODE: [
+["RESET_ACC"],
+["FOR_EACH_CHAR", [
+["PUSH_CHAR_INDEX"],
+["NEXT_POSITION"]
+]],
+["RETURN_ACC"]
+],
+
+CODE_TO_WORD: [
+["RESET_STR"],
+["FOR_I", 12, [
+["MOD_BASE"],
+["DIV_BASE"],
+["APPEND_CHAR"]
+]],
+["RETURN_STR"]
+]
+
+};
