@@ -37,7 +37,26 @@ function ALM_RUN(id, ...args){
   if(!fn) throw new Error("ALM: unknown op " + id);
   return fn(...args);
 }
+async function ALM_LOAD(){
+  const res = await fetch("alm_core.alm");
+  const txt = await res.text();
+  const lines = txt.split("\n");
 
+  for(const line of lines){
+    const t = line.trim();
+    if(!t || t.startsWith("#")) continue;
+
+    const parts = t.split(" ");
+    const id = Number(parts[1]);
+    const name = parts[2];
+
+    // فقط نربط الاسم بالـ ID (للمستقبل)
+    ALM_OPS_NAMES[id] = name;
+  }
+}
+
+const ALM_OPS_NAMES = {};
+ALM_LOAD();
 // ================= TEXT CLEAN =================
 function normalizeArabic(s){
   s = (s || "");
