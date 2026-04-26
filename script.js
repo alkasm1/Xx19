@@ -37,7 +37,6 @@ function normalizeArabic(text){
     .replace(/ؤ/g, "و")              // همزة على واو
     .replace(/ئ/g, "ي")              // همزة على نبرة
     .replace(/ة/g, "ه")              // تاء مربوطة
-    .replace(/ء/g, "");              // حذف همزة منفصلة
 }
 
 function cleanText(text){
