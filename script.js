@@ -95,7 +95,18 @@ const ALM_PROGRAMS = {
     ["OP", 12.2]  // COMPRESS_SPACES
   ]
 };
+ALM_PROGRAMS[14] = [
+  ["RESET_ACC"],
 
+  // loop over characters (ALM interpreter will handle looping)
+  ["FOR_EACH_CHAR", [
+    ["PUSH_CHAR_INDEX"],
+    ["ACCUMULATE_BASE32"],
+    ["NEXT_POSITION"]
+  ]],
+
+  ["RETURN_ACC"]
+];
 // ================= TEXT CLEAN =================
 function normalizeArabic(s){
   s = (s || "");
