@@ -314,12 +314,10 @@ function readByteFromBuffer(data, p){
   const gray = data[i];
   return 255 - gray;
 }
-
 function readCrc32FromBuffer(data, offset){
   let crc = 0;
   for(let i=0;i<4;i++){
-    
-const v = readByteFromBuffer(data, offset + i) & 0xFF;
+    const v = readByteFromBuffer(data, offset + i) & 0xFF;
     crc |= (v << (8*i)) >>> 0;
   }
   return crc >>> 0;
