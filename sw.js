@@ -1,8 +1,7 @@
-const cacheName = "xx18-v3";
+const cacheName = "alm-book-v1";
 
 const filesToCache = [
   "./",
-  "/Xx18/",
   "./index.html",
   "./manifest.json",
   "./icon-192.png",
@@ -12,6 +11,8 @@ const filesToCache = [
   "./pdf.worker.min.js",
   "./jspdf.umd.min.js",
   "./docx.min.js",
+  "./alm_vm.js",
+  "./alm_programs.js",
   "./script.js"
 ];
 
