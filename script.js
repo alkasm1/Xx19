@@ -25,21 +25,20 @@ const charToIndex = {};
 for (let k in indexToChar) charToIndex[indexToChar[k]] = Number(k);
 
 /****************************************************
- * 🔥 NORMALIZE (الإصدار الصحيح)
+ * NORMALIZE + CLEAN
  ****************************************************/
 
 function normalizeArabic(text){
   if(!text) return "";
-
   return text
-    .replace(/[\u064B-\u0652]/g, "")   // إزالة التشكيل
-    .replace(/[إأآ]/g, "ا")           // توحيد الألف
-    .replace(/ى/g, "ي")               // ألف مقصورة
-    .replace(/ة/g, "ه");              // تاء مربوطة
+    .replace(/[\u064B-\u0652]/g, "")
+    .replace(/[إأآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه");
 }
+
 function cleanText(text){
   text = normalizeArabic(text);
-
   let out = "";
   for (const ch of text) {
     if (ch === " " || ch === "\n" || ch === "\t") {
@@ -68,7 +67,6 @@ function crc32(str) {
   })());
 
   const bytes = new TextEncoder().encode(str);
-
   let crc = 0xFFFFFFFF;
   for (let i = 0; i < bytes.length; i++) {
     crc = (crc >>> 8) ^ table[(crc ^ bytes[i]) & 0xFF];
@@ -97,7 +95,6 @@ async function extractText(file){
     for(let i=1;i<=pdf.numPages;i++){
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
-
       const line = content.items.map(i=>i.str).join(" ");
       text += line + "\n";
     }
@@ -153,7 +150,22 @@ function readByte(data, p){
 }
 
 /****************************************************
- * UI
+ * ALM SIGNATURE (رأفت عمر)
+ * بصمة رقمية مخفية في الهيدر
+ ****************************************************/
+const SIGNATURE_TEXT = "رأفت عمر";
+const SIGNATURE_CODE = wordToCode(cleanText(SIGNATURE_TEXT));
+
+function drawSignature(buf){
+  // نستخدم أول 12 بايت من SIGNATURE_CODE في المنطقة المحجوزة
+  for(let i=0;i<12;i++){
+    const b = getByte(SIGNATURE_CODE, i);
+    drawByte(buf, HEADER_RESERVED_OFFSET + i, b);
+  }
+}
+
+/****************************************************
+ * UI ELEMENTS
  ****************************************************/
 const btnEncode = document.getElementById("btnEncode");
 const btnDecode = document.getElementById("btnDecode");
@@ -164,18 +176,88 @@ const statusEncode = document.getElementById("statusEncode");
 const statusDecode = document.getElementById("statusDecode");
 const outputText = document.getElementById("outputText");
 
+const progressBox = document.getElementById("progressBox");
+const progressBar = document.getElementById("progressBar");
+
+const fileSizeSpan = document.getElementById("fileSize");
+const blockCountSpan = document.getElementById("blockCount");
+
+const tabEncode = document.getElementById("tabEncode");
+const tabDecode = document.getElementById("tabDecode");
+const cardEncode = document.getElementById("cardEncode");
+const cardDecode = document.getElementById("cardDecode");
+
+const btnAdvancedToggle = document.getElementById("btnAdvancedToggle");
+const advancedBox = document.getElementById("advancedBox");
+
 let lastDecodedText = "";
+
+/****************************************************
+ * HELPERS
+ ****************************************************/
+function setProgress(p){
+  progressBox.style.display = "block";
+  progressBar.style.width = p + "%";
+  if(p >= 100){
+    setTimeout(()=>{ progressBox.style.display = "none"; }, 600);
+  }
+}
+
+function setStatusEncode(msg){
+  statusEncode.innerHTML = "<b>الحالة:</b> " + msg;
+}
+
+function setStatusDecode(msg){
+  statusDecode.innerHTML = "<b>الحالة:</b> " + msg;
+}
+
+/****************************************************
+ * TABS
+ ****************************************************/
+tabEncode.onclick = () => {
+  tabEncode.classList.add("active");
+  tabDecode.classList.remove("active");
+  cardEncode.style.display = "block";
+  cardDecode.style.display = "none";
+};
+
+tabDecode.onclick = () => {
+  tabDecode.classList.add("active");
+  tabEncode.classList.remove("active");
+  cardEncode.style.display = "none";
+  cardDecode.style.display = "block";
+};
+
+/****************************************************
+ * ADVANCED TOGGLE
+ ****************************************************/
+btnAdvancedToggle.onclick = () => {
+  advancedBox.style.display = (advancedBox.style.display === "none" || !advancedBox.style.display)
+    ? "block" : "none";
+};
 
 /****************************************************
  * ENCODE
  ****************************************************/
 btnEncode.onclick = async () => {
   try{
-    const file = document.getElementById("docInput").files[0];
-    if(!file) return alert("اختر ملف");
+    const fileInput = document.getElementById("docInput");
+    const file = fileInput.files[0];
+    if(!file){
+      alert("اختر ملف Word أو PDF أولاً");
+      return;
+    }
+
+    setStatusEncode("جاري قراءة الملف...");
+    setProgress(10);
 
     let text = await extractText(file);
     text = cleanText(text);
+
+    if(!text){
+      setStatusEncode("لم يتم العثور على نص صالح بعد التنظيف.");
+      return;
+    }
 
     const key = BigInt(document.getElementById("userKey").value || 0);
     const mode = document.getElementById("mode").value;
@@ -188,6 +270,12 @@ btnEncode.onclick = async () => {
         blocks.push(w.slice(i,i+LMAX));
       }
     }
+
+    fileSizeSpan.textContent = (file.size/1024).toFixed(1) + " KB";
+    blockCountSpan.textContent = blocks.length.toString();
+
+    setStatusEncode("جاري تجهيز الصورة...");
+    setProgress(40);
 
     const canvas = document.getElementById("canvas");
     canvas.width = SIZE;
@@ -213,13 +301,18 @@ btnEncode.onclick = async () => {
       drawByte(buf,HEADER_CRC_OFFSET+i,(crc>>(8*i))&0xFF);
     }
 
+    // signature (رأفت عمر) في المنطقة المحجوزة
+    drawSignature(buf);
+
+    setStatusEncode("جاري ترميز البيانات...");
+    setProgress(70);
+
     // data
     let ptr = HEADER;
 
     for(const b of blocks){
       let C = wordToCode(b) ^ key;
 
-      // 🔥 V2 دعم التكرار
       if(mode === "v2"){
         for(let r=0;r<2;r++){
           for(let j=0;j<8;j++){
@@ -234,10 +327,13 @@ btnEncode.onclick = async () => {
     }
 
     ctx.putImageData(img,0,0);
-    statusEncode.textContent = "تم التشفير ✅";
+    setProgress(100);
+    setStatusEncode("تم التشفير وإنشاء الصورة ✅ يمكنك الآن حفظها كملف PNG.");
 
   }catch(e){
+    console.error(e);
     alert(e.message);
+    setStatusEncode("حدث خطأ أثناء الترميز.");
   }
 };
 
@@ -247,8 +343,12 @@ btnEncode.onclick = async () => {
 btnDecode.onclick = async () => {
   try{
     const file = document.getElementById("imageInput").files[0];
-    if(!file) return alert("اختر صورة");
+    if(!file){
+      alert("اختر صورة PNG أولاً");
+      return;
+    }
 
+    setStatusDecode("جاري تحميل الصورة...");
     const key = BigInt(document.getElementById("userKey").value || 0);
     const mode = document.getElementById("mode").value;
 
@@ -302,13 +402,15 @@ btnDecode.onclick = async () => {
     }
 
     const text = blocks.join(" ");
-    lastDecodedText = text;
+    lastDecodedText = text || "";
+    outputText.textContent = text || "لم يتم استخراج نص.";
 
-    outputText.textContent = text;
-    statusDecode.textContent = "تم فك التشفير ✅";
+    setStatusDecode("تم فك التشفير ✅ يمكنك الآن تنزيل الملف كـ Word أو PDF.");
 
   }catch(e){
+    console.error(e);
     alert(e.message);
+    setStatusDecode("حدث خطأ أثناء فك التشفير.");
   }
 };
 
@@ -317,9 +419,13 @@ btnDecode.onclick = async () => {
  ****************************************************/
 btnSaveImage.onclick = () => {
   const canvas = document.getElementById("canvas");
+  if(!canvas.width || !canvas.height){
+    alert("لا توجد صورة حالية للحفظ.");
+    return;
+  }
   const a = document.createElement("a");
-  a.href = canvas.toDataURL();
-  a.download = "encoded.png";
+  a.href = canvas.toDataURL("image/png");
+  a.download = "alm_book_encoded.png";
   a.click();
 };
 
@@ -327,7 +433,10 @@ btnSaveImage.onclick = () => {
  * EXPORT
  ****************************************************/
 btnExport.onclick = async () => {
-  if(!lastDecodedText) return alert("لا يوجد نص");
+  if(!lastDecodedText){
+    alert("لا يوجد نص مستخرج بعد. قم أولاً بفك التشفير من صورة.");
+    return;
+  }
 
   const mode = document.getElementById("exportMode").value;
 
@@ -337,12 +446,13 @@ btnExport.onclick = async () => {
       sections:[{children:[new Paragraph(lastDecodedText)]}]
     });
     const blob = await Packer.toBlob(doc);
-    download(blob,"file.docx");
+    download(blob,"alm_book_file.docx");
   }else{
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF();
-    pdf.text(lastDecodedText,10,10);
-    pdf.save("file.pdf");
+    const lines = pdf.splitTextToSize(lastDecodedText, 180);
+    pdf.text(lines,10,10);
+    pdf.save("alm_book_file.pdf");
   }
 };
 
