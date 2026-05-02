@@ -1,7 +1,7 @@
 /****************************************************
  * ALM ENGINE + CORE SETTINGS
  ****************************************************/
-
+const SEP = 0xFFFFFFFFFFFFFFFFn; // فاصل كلمات
 const B = 32;
 const LMAX = 12;
 const SIZE = 1024;
@@ -266,10 +266,13 @@ btnEncode.onclick = async () => {
     const blocks = [];
 
     for (const w of words){
-      for(let i=0;i<w.length;i+=LMAX){
-        blocks.push(w.slice(i,i+LMAX));
-      }
-    }
+  // تقسيم الكلمة إلى بلوكات
+  for(let i=0;i<w.length;i+=LMAX){
+    blocks.push(w.slice(i,i+LMAX));
+  }
+  // إضافة فاصل بين الكلمات
+  blocks.push(SEP);
+}
 
     fileSizeSpan.textContent = (file.size/1024).toFixed(1) + " KB";
     blockCountSpan.textContent = blocks.length.toString();
@@ -397,9 +400,13 @@ btnDecode.onclick = async () => {
         }
       }
 
-      const w = codeToWord(C ^ key);
-      if(w) blocks.push(w);
-    }
+    if (C === SEP) {
+  blocks.push(" "); // فاصل كلمة
+} else {
+  const w = codeToWord(C ^ key);
+  if(w) blocks.push(w);
+}
+    
 
     const text = blocks.join(" ");
     lastDecodedText = text || "";
