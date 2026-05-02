@@ -1,7 +1,7 @@
 /****************************************************
  * ALM ENGINE + CORE SETTINGS
  ****************************************************/
-const SEP = 0xFFFFFFFFFFFFFFFFn; // فاصل كلمات
+
 const B = 32;
 const LMAX = 12;
 const SIZE = 1024;
@@ -9,6 +9,12 @@ const HEADER = 24;
 
 const HEADER_CRC_OFFSET = 8;
 const HEADER_RESERVED_OFFSET = 12;
+
+/****************************************************
+ * SPECIAL BLOCKS
+ ****************************************************/
+const SEP = 0xFFFFFFFFFFFFFFFFn;     // فاصل كلمات
+const NL  = 0xEEEEEEEEEEEEEEEEn;     // فاصل أسطر
 
 /****************************************************
  * CHAR TABLE
@@ -39,14 +45,18 @@ function normalizeArabic(text){
 
 function cleanText(text){
   text = normalizeArabic(text);
+
   let out = "";
   for (const ch of text) {
-    if (ch === " " || ch === "\n" || ch === "\t") {
+    if (ch === "\n") {
+      out += " ␤ ";   // رمز مؤقت للسطر
+    } else if (ch === " " || ch === "\t") {
       out += " ";
     } else if (charToIndex[ch]) {
       out += ch;
     }
   }
+
   return out.replace(/\s+/g, " ").trim();
 }
 
@@ -75,7 +85,7 @@ function crc32(str) {
 }
 
 /****************************************************
- * FILE EXTRACTION
+ * FILE EXTRACTION — KEEP NEWLINES
  ****************************************************/
 async function extractText(file){
   const name = file.name.toLowerCase();
@@ -84,7 +94,7 @@ async function extractText(file){
     const buf = await file.arrayBuffer();
     const zip = await JSZip.loadAsync(buf);
     const xml = await zip.file("word/document.xml").async("string");
-    return xml.replace(/<[^>]+>/g, " ");
+    return xml.replace(/<[^>]+>/g, "\n");
   }
 
   if(name.endsWith(".pdf")){
@@ -105,13 +115,14 @@ async function extractText(file){
 }
 
 /****************************************************
- * ALM CORE FUNCTIONS
+ * ALM CORE FUNCTIONS — FIXED DIRECTION
  ****************************************************/
 function wordToCode(w){
   let C = 0n;
   let pos = 0;
 
-  for (let i=w.length-1; i>=0 && pos<LMAX; i--){
+  // من اليسار إلى اليمين
+  for (let i=0; i<w.length && pos<LMAX; i++){
     const idx = charToIndex[w[i]] || 0;
     C += BigInt(idx) * (BigInt(B) ** BigInt(pos));
     pos++;
@@ -124,9 +135,9 @@ function codeToWord(C){
   for(let i=0;i<LMAX;i++){
     const d = Number(C % BigInt(B));
     C /= BigInt(B);
-    if(d) out = indexToChar[d] + out;
+    if(d) out += indexToChar[d];   // إضافة من اليسار لليمين
   }
-  return out;
+  return out.trim();
 }
 
 function getByte(C, i){
@@ -151,13 +162,11 @@ function readByte(data, p){
 
 /****************************************************
  * ALM SIGNATURE (رأفت عمر)
- * بصمة رقمية مخفية في الهيدر
  ****************************************************/
 const SIGNATURE_TEXT = "رأفت عمر";
 const SIGNATURE_CODE = wordToCode(cleanText(SIGNATURE_TEXT));
 
 function drawSignature(buf){
-  // نستخدم أول 12 بايت من SIGNATURE_CODE في المنطقة المحجوزة
   for(let i=0;i<12;i++){
     const b = getByte(SIGNATURE_CODE, i);
     drawByte(buf, HEADER_RESERVED_OFFSET + i, b);
@@ -176,88 +185,18 @@ const statusEncode = document.getElementById("statusEncode");
 const statusDecode = document.getElementById("statusDecode");
 const outputText = document.getElementById("outputText");
 
-const progressBox = document.getElementById("progressBox");
-const progressBar = document.getElementById("progressBar");
-
-const fileSizeSpan = document.getElementById("fileSize");
-const blockCountSpan = document.getElementById("blockCount");
-
-const tabEncode = document.getElementById("tabEncode");
-const tabDecode = document.getElementById("tabDecode");
-const cardEncode = document.getElementById("cardEncode");
-const cardDecode = document.getElementById("cardDecode");
-
-const btnAdvancedToggle = document.getElementById("btnAdvancedToggle");
-const advancedBox = document.getElementById("advancedBox");
-
 let lastDecodedText = "";
-
-/****************************************************
- * HELPERS
- ****************************************************/
-function setProgress(p){
-  progressBox.style.display = "block";
-  progressBar.style.width = p + "%";
-  if(p >= 100){
-    setTimeout(()=>{ progressBox.style.display = "none"; }, 600);
-  }
-}
-
-function setStatusEncode(msg){
-  statusEncode.innerHTML = "<b>الحالة:</b> " + msg;
-}
-
-function setStatusDecode(msg){
-  statusDecode.innerHTML = "<b>الحالة:</b> " + msg;
-}
-
-/****************************************************
- * TABS
- ****************************************************/
-tabEncode.onclick = () => {
-  tabEncode.classList.add("active");
-  tabDecode.classList.remove("active");
-  cardEncode.style.display = "block";
-  cardDecode.style.display = "none";
-};
-
-tabDecode.onclick = () => {
-  tabDecode.classList.add("active");
-  tabEncode.classList.remove("active");
-  cardEncode.style.display = "none";
-  cardDecode.style.display = "block";
-};
-
-/****************************************************
- * ADVANCED TOGGLE
- ****************************************************/
-btnAdvancedToggle.onclick = () => {
-  advancedBox.style.display = (advancedBox.style.display === "none" || !advancedBox.style.display)
-    ? "block" : "none";
-};
 
 /****************************************************
  * ENCODE
  ****************************************************/
 btnEncode.onclick = async () => {
   try{
-    const fileInput = document.getElementById("docInput");
-    const file = fileInput.files[0];
-    if(!file){
-      alert("اختر ملف Word أو PDF أولاً");
-      return;
-    }
-
-    setStatusEncode("جاري قراءة الملف...");
-    setProgress(10);
+    const file = document.getElementById("docInput").files[0];
+    if(!file) return alert("اختر ملف");
 
     let text = await extractText(file);
     text = cleanText(text);
-
-    if(!text){
-      setStatusEncode("لم يتم العثور على نص صالح بعد التنظيف.");
-      return;
-    }
 
     const key = BigInt(document.getElementById("userKey").value || 0);
     const mode = document.getElementById("mode").value;
@@ -266,19 +205,18 @@ btnEncode.onclick = async () => {
     const blocks = [];
 
     for (const w of words){
-  // تقسيم الكلمة إلى بلوكات
-  for(let i=0;i<w.length;i+=LMAX){
-    blocks.push(w.slice(i,i+LMAX));
-  }
-  // إضافة فاصل بين الكلمات
-  blocks.push(SEP);
-}
 
-    fileSizeSpan.textContent = (file.size/1024).toFixed(1) + " KB";
-    blockCountSpan.textContent = blocks.length.toString();
+      if (w === "␤") {
+        blocks.push(NL);
+        continue;
+      }
 
-    setStatusEncode("جاري تجهيز الصورة...");
-    setProgress(40);
+      for(let i=0;i<w.length;i+=LMAX){
+        blocks.push(w.slice(i,i+LMAX));
+      }
+
+      blocks.push(SEP);
+    }
 
     const canvas = document.getElementById("canvas");
     canvas.width = SIZE;
@@ -292,28 +230,32 @@ btnEncode.onclick = async () => {
       buf[i]=255;buf[i+1]=255;buf[i+2]=255;buf[i+3]=255;
     }
 
-    // header count
     let count = BigInt(blocks.length);
     for(let i=0;i<8;i++){
       drawByte(buf,i, Number((count>>BigInt(8*i))&0xFFn));
     }
 
-    // crc
     const crc = crc32(text);
     for(let i=0;i<4;i++){
       drawByte(buf,HEADER_CRC_OFFSET+i,(crc>>(8*i))&0xFF);
     }
 
-    // signature (رأفت عمر) في المنطقة المحجوزة
     drawSignature(buf);
 
-    setStatusEncode("جاري ترميز البيانات...");
-    setProgress(70);
-
-    // data
     let ptr = HEADER;
 
     for(const b of blocks){
+
+      if (b === SEP){
+        for(let j=0;j<8;j++) drawByte(buf,ptr++, getByte(SEP,j));
+        continue;
+      }
+
+      if (b === NL){
+        for(let j=0;j<8;j++) drawByte(buf,ptr++, getByte(NL,j));
+        continue;
+      }
+
       let C = wordToCode(b) ^ key;
 
       if(mode === "v2"){
@@ -330,13 +272,10 @@ btnEncode.onclick = async () => {
     }
 
     ctx.putImageData(img,0,0);
-    setProgress(100);
-    setStatusEncode("تم التشفير وإنشاء الصورة ✅ يمكنك الآن حفظها كملف PNG.");
+    statusEncode.textContent = "تم التشفير بنجاح";
 
   }catch(e){
-    console.error(e);
     alert(e.message);
-    setStatusEncode("حدث خطأ أثناء الترميز.");
   }
 };
 
@@ -346,12 +285,8 @@ btnEncode.onclick = async () => {
 btnDecode.onclick = async () => {
   try{
     const file = document.getElementById("imageInput").files[0];
-    if(!file){
-      alert("اختر صورة PNG أولاً");
-      return;
-    }
+    if(!file) return alert("اختر صورة");
 
-    setStatusDecode("جاري تحميل الصورة...");
     const key = BigInt(document.getElementById("userKey").value || 0);
     const mode = document.getElementById("mode").value;
 
@@ -400,24 +335,30 @@ btnDecode.onclick = async () => {
         }
       }
 
-    if (C === SEP) {
-  blocks.push(" "); // فاصل كلمة
-} else {
-  const w = codeToWord(C ^ key);
-  if(w) blocks.push(w);
-}
-    
+      if (C === SEP){
+        blocks.push(" ");
+      }
+      else if (C === NL){
+        blocks.push("\n");
+      }
+      else {
+        const w = codeToWord(C ^ key);
+        if(w) blocks.push(w);
+      }
+    }
 
-    const text = blocks.join(" ");
-    lastDecodedText = text || "";
-    outputText.textContent = text || "لم يتم استخراج نص.";
+    let text = blocks.join("");
 
-    setStatusDecode("تم فك التشفير ✅ يمكنك الآن تنزيل الملف كـ Word أو PDF.");
+    text = text.replace(/ +/g, " ");
+    text = text.replace(/ \n /g, "\n");
+    text = text.trim();
+
+    lastDecodedText = text;
+    outputText.textContent = text;
+    statusDecode.textContent = "تم فك التشفير بنجاح";
 
   }catch(e){
-    console.error(e);
     alert(e.message);
-    setStatusDecode("حدث خطأ أثناء فك التشفير.");
   }
 };
 
@@ -426,12 +367,8 @@ btnDecode.onclick = async () => {
  ****************************************************/
 btnSaveImage.onclick = () => {
   const canvas = document.getElementById("canvas");
-  if(!canvas.width || !canvas.height){
-    alert("لا توجد صورة حالية للحفظ.");
-    return;
-  }
   const a = document.createElement("a");
-  a.href = canvas.toDataURL("image/png");
+  a.href = canvas.toDataURL();
   a.download = "alm_book_encoded.png";
   a.click();
 };
@@ -440,10 +377,7 @@ btnSaveImage.onclick = () => {
  * EXPORT
  ****************************************************/
 btnExport.onclick = async () => {
-  if(!lastDecodedText){
-    alert("لا يوجد نص مستخرج بعد. قم أولاً بفك التشفير من صورة.");
-    return;
-  }
+  if(!lastDecodedText) return alert("لا يوجد نص");
 
   const mode = document.getElementById("exportMode").value;
 
@@ -453,13 +387,13 @@ btnExport.onclick = async () => {
       sections:[{children:[new Paragraph(lastDecodedText)]}]
     });
     const blob = await Packer.toBlob(doc);
-    download(blob,"alm_book_file.docx");
+    download(blob,"file.docx");
   }else{
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF();
     const lines = pdf.splitTextToSize(lastDecodedText, 180);
     pdf.text(lines,10,10);
-    pdf.save("alm_book_file.pdf");
+    pdf.save("file.pdf");
   }
 };
 
