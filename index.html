@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ALM GeoFreq v6 — File → Image → File</title>
+  <title>ALM Book — File → Image → File</title>
 
   <!-- مكتبات محلية -->
   <script src="jszip.min.js"></script>
@@ -26,14 +26,41 @@
       --border:#e5e7eb;
     }
     body { font-family: "Cairo", system-ui; margin:0; background:var(--bg); color:var(--text); }
-    header { background:linear-gradient(90deg,var(--green),#0b8fc1); color:white; padding:18px; text-align:center; font-weight:800; }
+    header {
+      background:linear-gradient(90deg,var(--green),#0b8fc1);
+      color:white; padding:18px; text-align:center;
+    }
+    header .title{font-weight:900;font-size:24px;}
+    header .subtitle{font-size:13px;opacity:.9;margin-top:4px;}
 
     .container { padding:20px; max-width:980px; margin:auto; }
+
+    .tabs{
+      display:flex;
+      justify-content:center;
+      gap:10px;
+      margin:10px auto 0;
+    }
+    .tab{
+      padding:8px 18px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:#fff;
+      cursor:pointer;
+      font-weight:700;
+      font-size:14px;
+    }
+    .tab.active{
+      background:var(--green);
+      color:#fff;
+      border-color:var(--green);
+    }
 
     .grid{
       display:grid;
       grid-template-columns: 1fr;
       gap:14px;
+      margin-top:14px;
     }
     @media (min-width: 900px){
       .grid{ grid-template-columns: 1fr 1fr; }
@@ -68,17 +95,12 @@
       border-radius:10px;
       font-weight:800;
       cursor:pointer;
+      font-size:14px;
     }
     button:hover{ background:var(--green2); }
 
     button.secondary{
       background:#111827;
-    }
-
-    .row{
-      display:flex;
-      gap:12px;
-      flex-wrap:wrap;
     }
 
     .status{
@@ -88,6 +110,7 @@
       border-radius:10px;
       background:#fff;
       color:var(--muted);
+      font-size:13px;
     }
 
     #canvas{
@@ -97,6 +120,7 @@
       border:1px solid var(--border);
       border-radius:12px;
       margin-top:10px;
+      background:#fff;
     }
 
     #outputText{
@@ -106,6 +130,9 @@
       padding:12px;
       min-height:120px;
       background:#fff;
+      font-size:14px;
+      white-space:pre-wrap;
+      line-height:1.6;
     }
 
     .pill{
@@ -119,25 +146,65 @@
       font-size:12px;
     }
 
+    .pill-blue{
+      background:#eff6ff;
+      border-color:#bfdbfe;
+      color:#1d4ed8;
+    }
+
+    .progress-box{
+      margin-top:10px;
+      display:none;
+    }
+    .progress-outer{
+      background:#e5e7eb;
+      height:8px;
+      border-radius:10px;
+      overflow:hidden;
+    }
+    .progress-inner{
+      height:8px;
+      width:0%;
+      background:var(--green);
+      border-radius:10px;
+      transition:width .2s ease-out;
+    }
+
+    .advanced-box{
+      margin-top:10px;
+      display:none;
+    }
+
     footer{
       text-align:center;
-      padding:20px;
+      padding:16px;
       color:#666;
+      font-size:13px;
     }
   </style>
 </head>
 
 <body>
-<header>ALM GeoFreq v6 — File → Image → File</header>
+<header>
+  <div class="title">ALM Book — File ↔ Image Encoder</div>
+  <div class="subtitle">
+    يعمل بالكامل بدون إنترنت — تحويل ملفات Word/PDF إلى صور PNG واستعادتها بدقة عالية
+  </div>
+</header>
+
+<div class="tabs">
+  <button id="tabEncode" class="tab active">ترميز ملف إلى صورة</button>
+  <button id="tabDecode" class="tab">استرجاع ملف من صورة</button>
+</div>
 
 <div class="container">
   <div class="grid">
 
     <!-- ENCODE -->
-    <div class="card">
+    <div class="card" id="cardEncode">
       <span class="pill">ترميز</span>
 
-      <label for="userKey">مفتاح المستخدم</label>
+      <label for="userKey">مفتاح المستخدم (اختياري)</label>
       <input id="userKey" type="text" value="123456789" />
 
       <label>وضع الترميز</label>
@@ -146,32 +213,51 @@
         <option value="v2">مقاوم (V2)</option>
       </select>
 
-      <small>
+      <small style="font-size:12px;color:#6b7280;">
         V1: دقة عالية (يتأثر بالضغط)<br>
-        V2: مقاوم جزئيًا للتشويه
+        V2: مقاوم جزئيًا للتشويه (تكرار داخلي)
       </small>
 
-      <h3>1) اختيار ملف Word أو PDF → صورة</h3>
+      <h3 style="margin-top:14px;font-size:16px;">1) اختيار ملف Word أو PDF → صورة</h3>
 
       <input type="file" id="docInput" accept=".docx,.pdf" />
       <button id="btnEncode">تحويل إلى صورة</button>
 
+      <div class="progress-box" id="progressBox">
+        <div class="progress-outer">
+          <div class="progress-inner" id="progressBar"></div>
+        </div>
+      </div>
+
       <canvas id="canvas"></canvas>
       <button class="secondary" id="btnSaveImage">💾 حفظ الصورة</button>
 
-      <div class="status" id="statusEncode">جاهز.</div>
+      <button class="secondary" id="btnAdvancedToggle">وضع متقدم</button>
+      <div class="advanced-box" id="advancedBox">
+        <div class="status">
+          <b>معلومات تقنية:</b><br>
+          حجم الملف الأصلي: <span id="fileSize">—</span><br>
+          عدد البلوكات: <span id="blockCount">—</span><br>
+          حجم الصورة: 1024 × 1024 بكسل<br>
+          توقيع ALM Book مضمّن لحفظ الملكية
+        </div>
+      </div>
+
+      <div class="status" id="statusEncode">
+        <b>الحالة:</b> جاهز للترميز.
+      </div>
     </div>
 
     <!-- DECODE -->
-    <div class="card">
-      <span class="pill" style="background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;">فكّ</span>
+    <div class="card" id="cardDecode" style="display:none;">
+      <span class="pill pill-blue">فكّ</span>
 
-      <h3>2) اختيار صورة PNG → استرجاع</h3>
+      <h3 style="margin-top:4px;font-size:16px;">2) اختيار صورة PNG → استرجاع</h3>
 
       <input type="file" id="imageInput" accept="image/png" />
-      <button id="btnDecode">استعادة النص</button>
+      <button id="btnDecode">استعادة النص من الصورة</button>
 
-      <label>نوع الإخراج</label>
+      <label style="margin-top:14px;">نوع الإخراج</label>
       <select id="exportMode">
         <option value="word">Word</option>
         <option value="pdf">PDF</option>
@@ -180,19 +266,23 @@
       <button class="secondary" id="btnExport">تنزيل الملف</button>
 
       <div id="outputText">—</div>
-      <div class="status" id="statusDecode">انتظر...</div>
+      <div class="status" id="statusDecode">
+        <b>الحالة:</b> انتظر اختيار صورة لفك التشفير.
+      </div>
     </div>
 
-    <div class="card span2">
-      <small>
-        النظام يعتمد على ALM + CRC.  
-        لا ترسل الصورة عبر واتساب كصورة — أرسلها كملف.
-      </small>
+    <div class="card span2" style="background:#fff7ed;border-color:#fed7aa;">
+      <b style="color:#c2410c;">تنبيه مهم:</b><br>
+      لا ترسل الصورة عبر واتساب أو تيليجرام كـ “صورة”.  
+      يجب إرسالها كـ <b>ملف</b> حتى لا يتم ضغطها وفقدان البيانات.  
+      النظام يعتمد على ALM + CRC + توقيع رقمي مخفي باسم المطوّر رأفت عمر.
     </div>
 
   </div>
 </div>
 
+<script src="alm_vm.js"></script>
+<script src="alm_programs.js"></script>
 <script src="script.js"></script>
 
 <script>
@@ -202,7 +292,8 @@ if ("serviceWorker" in navigator) {
 </script>
 
 <footer>
-تم التطوير بواسطة رأفت عمر — 
+ALM Book — Powered by ALM Core v1<br>
+تم التطوير بواسطة رأفت عمر — Developed by Raafat Omar
 </footer>
 
 </body>
