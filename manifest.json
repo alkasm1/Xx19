@@ -1,10 +1,11 @@
 {
-  "name": "ALM App",
-  "short_name": "ALM_book",
+  "name": "ALM Book",
+  "short_name": "ALM Book",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "theme_color": "#0BA37F",
+  "description": "ALM Book — Offline File ↔ Image Encoder. Developed by Raafat Omar.",
   "icons": [
     {
       "src": "icon-192.png",
