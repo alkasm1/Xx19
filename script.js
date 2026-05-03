@@ -11,14 +11,9 @@ const HEADER_CRC_OFFSET = 8;
 const HEADER_RESERVED_OFFSET = 12;
 
 /****************************************************
- * SAFE SEPARATORS (BYTE-LEVEL)
- ****************************************************/
-const WORD_SEP = 250;   // فاصل كلمة
-const LINE_SEP = 251;   // فاصل سطر
-
-/****************************************************
  * CHAR TABLE
  ****************************************************/
+
 const indexToChar = {
   1:"ا",2:"ب",3:"ت",4:"ث",5:"ج",6:"ح",7:"خ",8:"د",9:"ذ",
   10:"ر",11:"ز",12:"س",13:"ش",14:"ص",15:"ض",16:"ط",
@@ -30,7 +25,7 @@ const charToIndex = {};
 for (let k in indexToChar) charToIndex[indexToChar[k]] = Number(k);
 
 /****************************************************
- * NORMALIZE + CLEAN (KEEP NEWLINES)
+ * NORMALIZE + CLEAN (WITH SAFE NEWLINE TOKEN)
  ****************************************************/
 function normalizeArabic(text){
   if(!text) return "";
@@ -46,11 +41,16 @@ function cleanText(text){
 
   let out = "";
   for (const ch of text) {
+
     if (ch === "\n") {
-      out += " ␤ ";   // رمز مؤقت للسطر
-    } else if (ch === " " || ch === "\t") {
+      out += " ␤ ";   // ← رمز سطر آمن
+    }
+
+    else if (ch === " " || ch === "\t") {
       out += " ";
-    } else if (charToIndex[ch]) {
+    }
+
+    else if (charToIndex[ch]) {
       out += ch;
     }
   }
@@ -113,14 +113,13 @@ async function extractText(file){
 }
 
 /****************************************************
- * ALM CORE FUNCTIONS — FIXED DIRECTION
+ * ALM CORE FUNCTIONS (ORIGINAL — DO NOT CHANGE)
  ****************************************************/
 function wordToCode(w){
   let C = 0n;
   let pos = 0;
 
-  // من اليسار إلى اليمين (إصلاح الانعكاس)
-  for (let i=0; i<w.length && pos<LMAX; i++){
+  for (let i=w.length-1; i>=0 && pos<LMAX; i--){
     const idx = charToIndex[w[i]] || 0;
     C += BigInt(idx) * (BigInt(B) ** BigInt(pos));
     pos++;
@@ -133,9 +132,9 @@ function codeToWord(C){
   for(let i=0;i<LMAX;i++){
     const d = Number(C % BigInt(B));
     C /= BigInt(B);
-    if(d) out += indexToChar[d];
+    if(d) out = indexToChar[d] + out;
   }
-  return out.trim();
+  return out;
 }
 
 /****************************************************
@@ -240,7 +239,7 @@ btnAdvancedToggle.onclick = () => {
 };
 
 /****************************************************
- * ENCODE (WITH WORD + LINE SEPARATORS)
+ * ENCODE (ORIGINAL + SAFE NEWLINES)
  ****************************************************/
 btnEncode.onclick = async () => {
   try{
@@ -269,17 +268,9 @@ btnEncode.onclick = async () => {
     const blocks = [];
 
     for (const w of words){
-
-      if (w === "␤"){
-        blocks.push({type:"NL"});
-        continue;
-      }
-
       for(let i=0;i<w.length;i+=LMAX){
-        blocks.push({type:"WORD", value:w.slice(i,i+LMAX)});
+        blocks.push(w.slice(i,i+LMAX));
       }
-
-      blocks.push({type:"SEP"});
     }
 
     fileSizeSpan.textContent = (file.size/1024).toFixed(1) + " KB";
@@ -318,18 +309,7 @@ btnEncode.onclick = async () => {
     let ptr = HEADER;
 
     for(const b of blocks){
-
-      if (b.type === "SEP"){
-        drawByte(buf, ptr++, WORD_SEP);
-        continue;
-      }
-
-      if (b.type === "NL"){
-        drawByte(buf, ptr++, LINE_SEP);
-        continue;
-      }
-
-      let C = wordToCode(b.value) ^ key;
+      let C = wordToCode(b) ^ key;
 
       if(mode === "v2"){
         for(let r=0;r<2;r++){
@@ -355,7 +335,7 @@ btnEncode.onclick = async () => {
   }
 };
 /****************************************************
- * DECODE (WITH WORD + LINE SEPARATORS)
+ * DECODE (ORIGINAL + SAFE NEWLINES)
  ****************************************************/
 btnDecode.onclick = async () => {
   try{
@@ -392,42 +372,40 @@ btnDecode.onclick = async () => {
     let ptr = HEADER;
 
     for(let i=0;i<Number(count);i++){
+      let C=0n;
 
-      const byte = readByte(data, ptr++);
+      if(mode==="v2"){
+        let votes = Array(8).fill(0);
 
-      // فاصل كلمة
-      if (byte === WORD_SEP){
-        blocks.push(" ");
-        continue;
-      }
+        for(let r=0;r<2;r++){
+          for(let j=0;j<8;j++){
+            votes[j] += readByte(data,ptr++);
+          }
+        }
 
-      // فاصل سطر
-      if (byte === LINE_SEP){
-        blocks.push("\n");
-        continue;
-      }
+        for(let j=0;j<8;j++){
+          const avg = Math.round(votes[j]/2);
+          C |= BigInt(avg) << BigInt(8*j);
+        }
 
-      // كلمة مشفرة (8 bytes)
-      let C = BigInt(byte);
-
-      for(let j=1;j<8;j++){
-        const b = readByte(data, ptr++);
-        C |= BigInt(b) << BigInt(8*j);
+      }else{
+        for(let j=0;j<8;j++){
+          C |= BigInt(readByte(data,ptr++)) << BigInt(8*j);
+        }
       }
 
       const w = codeToWord(C ^ key);
       if(w) blocks.push(w);
     }
 
-    let text = blocks.join("");
-
-    // تنظيف المسافات والأسطر
-
+    // إعادة بناء النص
     let text = blocks.join(" ");
-text = text.replace(/ ␤ /g, "\n");   // 
-text = text.replace(/␤/g, "\n");     // احتياط لأي حالات بدون مسافات
-lastDecodedText = text || "";
-outputText.textContent = text || "لم يتم استخراج نص.";
+
+    // إعادة الأسطر
+    text = text.replace(/␤/g, "\n");
+
+    lastDecodedText = text || "";
+    outputText.textContent = text || "لم يتم استخراج نص.";
 
     setStatusDecode("تم فك التشفير بنجاح");
 
