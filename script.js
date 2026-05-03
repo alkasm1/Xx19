@@ -422,12 +422,12 @@ btnDecode.onclick = async () => {
     let text = blocks.join("");
 
     // تنظيف المسافات والأسطر
-    text = text.replace(/ +/g, " ");
-    text = text.replace(/ \n /g, "\n");
-    text = text.trim();
 
-    lastDecodedText = text;
-    outputText.textContent = text || "لم يتم استخراج نص.";
+    let text = blocks.join(" ");
+text = text.replace(/ ␤ /g, "\n");   // 
+text = text.replace(/␤/g, "\n");     // احتياط لأي حالات بدون مسافات
+lastDecodedText = text || "";
+outputText.textContent = text || "لم يتم استخراج نص.";
 
     setStatusDecode("تم فك التشفير بنجاح");
 
