@@ -89,27 +89,35 @@ async function extractText(file){
   const name = file.name.toLowerCase();
 
   if(name.endsWith(".docx")){
-    const buf = await file.arrayBuffer();
-    const zip = await JSZip.loadAsync(buf);
-    const xml = await zip.file("word/document.xml").async("string");
-    return xml.replace(/<[^>]+>/g, "\n");
+    try {
+      const buf = await file.arrayBuffer();
+      const zip = await JSZip.loadAsync(buf);
+      const xml = await zip.file("word/document.xml").async("string");
+      return xml.replace(/<[^>]+>/g, "\n");
+    } catch(e) {
+      throw new Error("خطأ في قراءة ملف Word: " + e.message);
+    }
   }
 
   if(name.endsWith(".pdf")){
-    const buf = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+    try {
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({data: buf}).promise;
 
-    let text = "";
-    for(let i=1;i<=pdf.numPages;i++){
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      const line = content.items.map(i=>i.str).join(" ");
-      text += line + "\n";
+      let text = "";
+      for(let i=1;i<=pdf.numPages;i++){
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const line = content.items.map(i=>i.str).join(" ");
+        text += line + "\n";
+      }
+      return text;
+    } catch(e) {
+      throw new Error("خطأ في قراءة ملف PDF: " + e.message);
     }
-    return text;
   }
 
-  throw new Error("نوع غير مدعوم");
+  throw new Error("نوع غير مدعوم. استخدم Word أو PDF فقط.");
 }
 
 /****************************************************
@@ -326,16 +334,17 @@ btnEncode.onclick = async () => {
 
     ctx.putImageData(img,0,0);
     setProgress(100);
-    setStatusEncode("تم التشفير وإنشاء الصورة بنجاح");
+    setStatusEncode("تم التشفير وإنشاء الصورة بنجاح ✓");
 
   }catch(e){
     console.error(e);
-    alert(e.message);
+    alert("خطأ: " + e.message);
     setStatusEncode("حدث خطأ أثناء الترميز.");
   }
 };
+
 /****************************************************
- * DECODE (ORIGINAL + SAFE NEWLINES)
+ * DECODE (ORIGINAL + SAFE NEWLINES + OFFLINE SAFE)
  ****************************************************/
 btnDecode.onclick = async () => {
   try{
@@ -349,69 +358,97 @@ btnDecode.onclick = async () => {
     const key = BigInt(document.getElementById("userKey").value || 0);
     const mode = document.getElementById("mode").value;
 
-    const img = new Image();
-    img.src = URL.createObjectURL(file);
+    // استخدام FileReader بدلاً من URL.createObjectURL لتجنب مشاكل الإنترنت
+    const reader = new FileReader();
+    
+    reader.onerror = () => {
+      throw new Error("فشل في قراءة الملف");
+    };
 
-    await new Promise(r=>img.onload=r);
+    reader.onload = async () => {
+      try {
+        const img = new Image();
+        img.onerror = () => {
+          throw new Error("فشل في فك ترميز الصورة - تأكد أنها PNG صحيحة");
+        };
 
-    const canvas = document.getElementById("canvas");
-    canvas.width = SIZE;
-    canvas.height = SIZE;
+        img.onload = async () => {
+          try {
+            const canvas = document.getElementById("canvas");
+            canvas.width = SIZE;
+            canvas.height = SIZE;
 
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(img,0,0);
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0);
 
-    const data = ctx.getImageData(0,0,SIZE,SIZE).data;
+            const data = ctx.getImageData(0, 0, SIZE, SIZE).data;
 
-    let count = 0n;
-    for(let i=0;i<8;i++){
-      count |= BigInt(readByte(data,i)) << BigInt(8*i);
-    }
+            let count = 0n;
+            for(let i=0;i<8;i++){
+              count |= BigInt(readByte(data,i)) << BigInt(8*i);
+            }
 
-    const blocks = [];
-    let ptr = HEADER;
+            const blocks = [];
+            let ptr = HEADER;
 
-    for(let i=0;i<Number(count);i++){
-      let C=0n;
+            for(let i=0;i<Number(count);i++){
+              let C=0n;
 
-      if(mode==="v2"){
-        let votes = Array(8).fill(0);
+              if(mode==="v2"){
+                let votes = Array(8).fill(0);
 
-        for(let r=0;r<2;r++){
-          for(let j=0;j<8;j++){
-            votes[j] += readByte(data,ptr++);
+                for(let r=0;r<2;r++){
+                  for(let j=0;j<8;j++){
+                    votes[j] += readByte(data,ptr++);
+                  }
+                }
+
+                for(let j=0;j<8;j++){
+                  const avg = Math.round(votes[j]/2);
+                  C |= BigInt(avg) << BigInt(8*j);
+                }
+
+              }else{
+                for(let j=0;j<8;j++){
+                  C |= BigInt(readByte(data,ptr++)) << BigInt(8*j);
+                }
+              }
+
+              const w = codeToWord(C ^ key);
+              if(w) blocks.push(w);
+            }
+
+            // إعادة بناء النص
+            let text = blocks.join(" ");
+
+            // إعادة الأسطر
+            text = text.replace(/␤/g, "\n");
+
+            lastDecodedText = text || "";
+            outputText.textContent = text || "لم يتم استخراج نص.";
+
+            setStatusDecode("تم فك التشفير بنجاح ✓");
+
+          } catch(e) {
+            console.error(e);
+            throw e;
           }
-        }
+        };
 
-        for(let j=0;j<8;j++){
-          const avg = Math.round(votes[j]/2);
-          C |= BigInt(avg) << BigInt(8*j);
-        }
+        img.src = reader.result;
 
-      }else{
-        for(let j=0;j<8;j++){
-          C |= BigInt(readByte(data,ptr++)) << BigInt(8*j);
-        }
+      } catch(e) {
+        console.error(e);
+        alert("خطأ: " + e.message);
+        setStatusDecode("حدث خطأ أثناء فك التشفير.");
       }
+    };
 
-      const w = codeToWord(C ^ key);
-      if(w) blocks.push(w);
-    }
-
-    // إعادة بناء النص
-    let text = blocks.join(" ");
-
-    // إعادة الأسطر
-    text = text.replace(/␤/g, "\n");
-
-    lastDecodedText = text || "";
-    outputText.textContent = text || "لم يتم استخراج نص.";
-
-    setStatusDecode("تم فك التشفير بنجاح");
+    reader.readAsDataURL(file);
 
   }catch(e){
     console.error(e);
-    alert(e.message);
+    alert("خطأ: " + e.message);
     setStatusDecode("حدث خطأ أثناء فك التشفير.");
   }
 };
@@ -440,21 +477,26 @@ btnExport.onclick = async () => {
     return;
   }
 
-  const mode = document.getElementById("exportMode").value;
+  try {
+    const mode = document.getElementById("exportMode").value;
 
-  if(mode==="word"){
-    const { Document, Packer, Paragraph } = window.docx;
-    const doc = new Document({
-      sections:[{children:[new Paragraph(lastDecodedText)]}]
-    });
-    const blob = await Packer.toBlob(doc);
-    download(blob,"alm_book_file.docx");
-  }else{
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF();
-    const lines = pdf.splitTextToSize(lastDecodedText, 180);
-    pdf.text(lines,10,10);
-    pdf.save("alm_book_file.pdf");
+    if(mode==="word"){
+      const { Document, Packer, Paragraph } = window.docx;
+      const doc = new Document({
+        sections:[{children:[new Paragraph(lastDecodedText)]}]
+      });
+      const blob = await Packer.toBlob(doc);
+      download(blob,"alm_book_file.docx");
+    }else{
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF();
+      const lines = pdf.splitTextToSize(lastDecodedText, 180);
+      pdf.text(lines,10,10);
+      pdf.save("alm_book_file.pdf");
+    }
+  } catch(e) {
+    console.error(e);
+    alert("خطأ أثناء التصدير: " + e.message);
   }
 };
 
@@ -463,4 +505,6 @@ function download(blob,name){
   a.href = URL.createObjectURL(blob);
   a.download = name;
   a.click();
+  // تحرير الذاكرة
+  URL.revokeObjectURL(a.href);
 }
